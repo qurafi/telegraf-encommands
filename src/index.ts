@@ -120,11 +120,6 @@ export default class CommandManager {
 
 				if (info) {
 					debug({ [subType]: message[subType] });
-
-					// if (subType == "photo") {
-					// 	let file = info[info.length - 1];
-					// 	ctx.tg.getFileLink(file.file_id).then(debug);
-					// }
 				}
 			}
 
@@ -152,7 +147,6 @@ export default class CommandManager {
 				delete this.botReplies[message_id];
 			}
 
-			// TODO: Support more than one sub type
 			if (cmd.subTypes && !cmd.subTypes.some(v => v == subType)) return next();
 
 			let chatType = message?.chat?.id > 0 ? "private" : "group";
@@ -200,8 +194,8 @@ export default class CommandManager {
 				query, // raw query
 				args, // parsed arguments if exists
 				message, // the message object from context object
-				reply,
-				replySubType,
+				reply, // message object of reply message
+				replySubType, // reply message type
 				isReply: !!reply,
 				isEdited,
 
@@ -209,7 +203,6 @@ export default class CommandManager {
 				// for example : type: photo, data: {file_id:...}
 				updateType: subType,
 				updateData,
-				// update: { type: subType, data: updateData },
 			};
 
 			debug({ params });
