@@ -15,7 +15,7 @@ Enhanced command manager for telegraf.js
 
 `npm i telegraf-encommands`
 
-## Example
+## Examples
 
 ##### Basic command
 
@@ -52,12 +52,6 @@ commands.create("photo", {
 ##### Command for allowed users
 
 ```javascript
-// reply with width and height of photo
-const bot = new Telegraf(process.env.BOT_TOKEN);
-const commands = new CommandManager();
-
-bot.use(commands.middleware);
-
 commands.create("secret", {
 	required: false,
 	allowedUsers: ["username"],
@@ -70,20 +64,15 @@ commands.create("secret", {
 ##### Use replied to message as query
 
 ```javascript
-// reply with width and height of photo
-const bot = new Telegraf(process.env.BOT_TOKEN);
-const commands = new CommandManager();
-
-bot.use(commands.middleware);
 
 commands.create("echo", {
-	required: false,
-	useReply: true,
-	handler: ({ ctx, isReply, query }) => {
-		if (isReply) {
-			return ctx.reply(`${query}`);
-		}
-	},
+    required: false,
+    useReply: true,
+    handler: ({ ctx, isReply, query }) => {
+        if (isReply) {
+	    return ctx.reply(`${query}`);
+	}
+    },
 });
 ```
 
