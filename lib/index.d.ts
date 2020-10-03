@@ -13,7 +13,6 @@ interface CommandConfigs {
     allowEdited?: boolean;
     useReply?: boolean;
     deleteOldReplies?: boolean;
-    catch?: Function;
 }
 interface Command extends CommandConfigs {
     handler: CommandHandler;
