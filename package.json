@@ -1,7 +1,7 @@
 {
 	"name": "telegraf-encommands",
 	"author": "Mohammed Al-Qurafi",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Enhanced command manager middleware for telegraf.js",
 	"license": "MIT",
 	"keywords": [
@@ -18,7 +18,7 @@
 		"prepublishOnly": "tsc"
 	},
 	"files": [
-		"src/",
+		"lib/*",
 		"LICENSE",
 		"README.md"
 	],
