@@ -1,14 +1,16 @@
 # Telegraf-encommands
+![npm](https://img.shields.io/npm/v/telegraf-encommands) ![npm bundle size](https://img.shields.io/bundlephobia/min/telegraf-encommands) ![NPM](https://img.shields.io/npm/l/telegraf-encommands)
 
-Enhanced command manager for Telegraf.js
+###### Enhanced command manager for Telegraf.js
 
 ## Features
 
 - Support edited messages and replies.
-- Delete old bot replied using in-memory caching.
+- Delete old bot replied using in-memory caching or you can set your own custom store.
 - Set which users are allowed to run a specific command.
-- Set command to run on specific chat type(e.g. private only) or update-type(e.g. photos only).
+- Set command to run on a specific chat type(e.g. private only) or update-type(e.g. photos only).
 - Customizable argument parser.
+- Reply to the last cached bot reply if user send the same command (useful for less database queries and less chat distracting for large bot messages)
 
 ## Installation
 
@@ -21,6 +23,7 @@ Enhanced command manager for Telegraf.js
 ```javascript
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const commands = new CommandManager();
+
 bot.use(commands.middleware);
 
 commands.on("test", ({ ctx, args }) => {
