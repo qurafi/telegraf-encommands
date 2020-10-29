@@ -11,11 +11,6 @@ type Store = Map<string, string | string[]>;
 type obj = Record<string, unknown>;
 
 type CommandHandler = (arg: obj) => Promise<TT.Message> | void | undefined | false;
-// interface Store {
-// 	set: (key: number, value: number) => Promise<boolean> | boolean;
-// 	delete: (key: number) => Promise<boolean> | boolean;
-// 	get: (key: number) => number;
-// }
 
 // Available command options
 interface CommandConfigs {
