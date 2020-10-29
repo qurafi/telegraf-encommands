@@ -1,10 +1,12 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
+
 require("dotenv").config();
 const Telegraf = require("telegraf");
 const CommandManager = require("./lib");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
-
 const commands = new CommandManager();
+
 commands.configs = {
 	required: true,
 	helpMessage: "*set your help message here*",
@@ -14,10 +16,10 @@ bot.use(commands.middleware);
 
 // create new command with default configs
 commands.on("test", ({ ctx, command, query }) => {
-	ctx.reply("hello from command test");
+	return ctx.reply(`/${command} ${query}`);
 });
 
-// take the replied to message as the command query
+// take the replied to message as command query
 commands.create("echo", {
 	required: false,
 	useReply: true,
@@ -28,8 +30,7 @@ commands.create("echo", {
 	},
 });
 
-// reply with width and height of photo
-
+// reply with width and height of the photo
 commands.create("photo", {
 	subTypes: ["photo"],
 	required: false,
@@ -38,6 +39,7 @@ commands.create("photo", {
 	},
 });
 
+// next()
 bot.on("message", ctx => {
 	ctx.reply("hello");
 });

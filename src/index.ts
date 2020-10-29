@@ -1,10 +1,21 @@
 import { parseArgs, parserOptions } from "./args";
-import { Telegraf } from "telegraf";
+import Telegraf from "telegraf";
 import * as TT from "telegram-typings";
+import { IncomingMessage } from "telegraf/typings/telegram-types";
+import { TelegrafContext } from "telegraf/typings/context";
+import { MiddlewareFn } from "telegraf/typings/composer";
 
 const supportedUpdateSubTypes = ["text", "audio", "voice", "video", "photo", "document", "sticker"];
 
-type CommandHandler = (arg: object) => Promise<TT.Message> | void | undefined | false;
+type Store = Map<string, string | string[]>;
+type obj = Record<string, unknown>;
+
+type CommandHandler = (arg: obj) => Promise<TT.Message> | void | undefined | false;
+// interface Store {
+// 	set: (key: number, value: number) => Promise<boolean> | boolean;
+// 	delete: (key: number) => Promise<boolean> | boolean;
+// 	get: (key: number) => number;
+// }
 
 // Available command options
 interface CommandConfigs {
@@ -17,7 +28,7 @@ interface CommandConfigs {
 	// set your custom parser function
 	// this is called with (query, parserArgOptions)
 	// the default parser in args.ts
-	parser?: Function;
+	parser?: typeof parseArgs;
 	parserOptions?: parserOptions;
 
 	// allowed users to run this command
@@ -41,16 +52,36 @@ interface CommandConfigs {
 
 	// Delete old bot replies
 	deleteOldReplies?: boolean;
+
+	// useful for if you want to respond with a large message. to avoid distracting chat use this
+	// it will store the message id and then when user send the same command it'll we'll reply to this cached message
+	largeResponseCache?: boolean;
+
+	// specify the minimum length to cache large messages
+	minResponseSize?: number;
+}
+
+interface constructorConfigs extends CommandConfigs {
+	// specfiy custom store for caching message ids
+	// the default one is Map
+	// you should add your custom store with set and get method
+	cacheStore?: Store;
+
+	// specify cache reply age
+	// in seconds
+	replyCacheAge?: number;
 }
 
 // Default options
 const DEFAULTS: CommandConfigs = {
 	required: false,
 	parser: parseArgs,
-	mode: "private",
+	mode: "both",
 	allowEdited: true,
 	useReply: true,
 	deleteOldReplies: true,
+	largeResponseCache: true,
+	minResponseSize: 10,
 };
 
 interface Command extends CommandConfigs {
@@ -63,89 +94,82 @@ interface Commands {
 }
 
 export default class CommandManager {
-	private _configs: CommandConfigs = { ...DEFAULTS };
-	private botReplies = new Map();
-	private readonly commands: Commands = {};
 	static readonly parseArgs = parseArgs;
+	private _configs: CommandConfigs = { ...DEFAULTS };
+	private readonly commands: Commands = {};
+	public cacheStore = new Map();
+	public replyCacheAge: number;
 
-	set configs(v) {
-		this._configs = Object.assign({}, DEFAULTS, v);
+	constructor(configs: constructorConfigs = {}) {
+		this.configs = configs;
+
+		if (configs.cacheStore) this.cacheStore = configs.cacheStore;
+		this.replyCacheAge = configs.replyCacheAge || 86400;
 	}
 
-	get configs() {
-		return this._configs;
-	}
-
-	private getMessageSubType(message: any) {
-		return supportedUpdateSubTypes.find(v => message && v in message);
-	}
-
-	private getMessageText(message: any) {
-		let subType = this.getMessageSubType(message);
-		let isText = subType == "text";
-		return {
-			text: message[isText ? "text" : "caption"],
-			entities: message[isText ? "entities" : "caption_entities"],
-		};
-	}
-
-	get middleware() {
+	get middleware(): MiddlewareFn<TelegrafContext> {
 		// Composer.entity does not work
-		return Telegraf.mount(["edited_message", "message"], (ctx, next) => {
-			let message = ctx.editedMessage ?? ctx.message;
+		return Telegraf.mount(["edited_message", "message"], async (ctx, next) => {
+			const message = ctx.editedMessage ?? ctx.message;
 			if (!message) return next();
 
 			//	ctx.updateSubTypes is broken on edited messages
-			let subType = this.getMessageSubType(message);
+			const subType = this.getMessageSubType(message);
 			if (!subType) return next();
 
-			let { message_id, reply_to_message: reply } = message;
-			let { text, entities } = this.getMessageText(message);
-			let updateData = { text, entities };
-			let isEdited = !!ctx.editedMessage;
-			let user = message?.from?.username;
-			let replySubType = this.getMessageSubType(reply);
+			const { message_id, reply_to_message: reply } = message;
+			const { text, entities } = this.getMessageText(message);
+			const isEdited = !!ctx.editedMessage;
+			const user = message?.from?.username;
+			let updateData: obj = { text, entities };
+			let replySubType;
+			if (reply) replySubType = this.getMessageSubType(reply);
 
 			if (!text || !entities) return next();
 
 			if (subType && subType !== "text") {
-				let info = message[subType];
-				updateData = { ...updateData, ...info };
+				const info = message[subType];
+				if (info) updateData = { ...updateData, ...info };
 			}
 
-			let entity = entities && entities[0];
-			let isCommand = entity && entity.type == "bot_command" && entity.offset === 0;
+			const entity = entities && entities[0];
+			const isCommand = entity && entity.type == "bot_command" && entity.offset === 0;
 			if (!isCommand) return next();
 
-			let command = text.slice(1, entity.length);
+			const command = text.slice(1, entity.length);
 			let query = text.slice(entity.length + 1);
 
-			let cmd = this.commands[command];
+			const cmd = this.commands[command];
 
 			if (!cmd) return next();
 			if (cmd.allowEdited === false && isEdited) return next();
 
-			let botReplyMID = this.botReplies.get(message_id);
-			if (cmd.deleteOldReplies && isEdited && botReplyMID) {
-				ctx.deleteMessage(botReplyMID);
-				this.botReplies.delete(message_id);
+			const botReplies = this.cacheStore;
+
+			if (botReplies && cmd.deleteOldReplies && isEdited) {
+				const key = `id-${message_id}`;
+				const botReplyMID = await botReplies.get(key);
+
+				if (botReplyMID) {
+					ctx.deleteMessage(botReplyMID);
+					botReplies.delete(key);
+				}
 			}
 
 			if (cmd.subTypes && !cmd.subTypes.some(v => v == subType)) return next();
 
-			let chatType = message?.chat?.id > 0 ? "private" : "group";
+			const chatType = message?.chat?.id > 0 ? "private" : "group";
 			if (cmd.mode != chatType && cmd.mode !== "both") {
 				return next();
 			}
 
-			let allowedUsers = cmd.allowedUsers;
-
+			const allowedUsers = cmd.allowedUsers;
 			if (allowedUsers && !allowedUsers.some(v => v === user)) {
 				return next();
 			}
 
 			if (query.trim() === "" && cmd.useReply && reply) {
-				let { text } = this.getMessageText(reply);
+				const { text } = this.getMessageText(reply);
 				if (text && text.trim() !== "") {
 					query = text;
 				}
@@ -159,48 +183,103 @@ export default class CommandManager {
 				return next();
 			}
 
-			let args;
+			let args: string[] | undefined;
 			if (cmd.parser && typeof query === "string") {
 				args = cmd.parser(query, cmd.parserOptions);
 			}
 
-			let params = {
-				ctx, // telegraf context object
-				command, // command name
-				query, // raw query
-				args, // parsed arguments if exists
-				message, // the message object from context object
-				reply, // message object of reply message
-				replySubType, // reply message type
-				isReply: !!reply,
-				isEdited,
+			const replyKey = `query-${args ? args.join() : query}`;
+			const mid = await botReplies.get(replyKey);
 
-				// related to the type of message and its data
-				// for example : type: photo, data: {file_id:...}
-				updateType: subType,
-				updateData,
-			};
+			let botReply;
+			let replyToCachedMessage = mid && cmd.largeResponseCache;
+			if (replyToCachedMessage) {
+				try {
+					botReply = await ctx.replyWithMarkdown("`  👆`", {
+						reply_to_message_id: mid,
+					});
 
-			let returned = cmd.handler(params);
-			if (returned instanceof Promise) {
-				returned.then(v => {
-					if (cmd.deleteOldReplies && v?.message_id) {
-						this.botReplies.set(message_id, v.message_id);
+					const dnow = Date.now() / 1000;
+					const dmsg = botReply.reply_to_message?.date;
+
+					if (dmsg && dnow - dmsg > this.replyCacheAge) {
+						ctx.deleteMessage(botReply.message_id);
+						await botReplies.delete(replyKey);
+						replyToCachedMessage = false;
 					}
-				});
-			} else if (returned === false) {
-				return next();
+				} catch (e) {
+					replyToCachedMessage = false;
+				}
 			}
+
+			if (!replyToCachedMessage) {
+				const params = {
+					ctx, // telegraf context object
+					command, // command name
+					query, // raw query
+					args, // parsed arguments if exists
+					message, // the message object from context object
+					reply, // message object of reply message
+					replySubType, // reply message type
+					isReply: !!reply,
+					isEdited,
+
+					// related to the type of message and its data
+					// for example : type: photo, data: {file_id:...}
+					updateType: subType,
+					updateData,
+				};
+
+				botReply = await cmd.handler(params);
+			}
+
+			if (botReply && botReply.message_id) {
+				const mid = botReply.message_id.toString();
+
+				if (cmd.deleteOldReplies) {
+					await botReplies.set(`id-${message_id}`, mid);
+				}
+
+				const min = cmd.minResponseSize || 200;
+				const text = botReply.text;
+				if (cmd.largeResponseCache && text && text.length >= min) {
+					const query_id = args ? args.join() : query;
+					await botReplies.set(`query-${query_id}`, mid);
+				}
+			}
+
+			if (botReply === false) return next();
 		});
 	}
 
-	create(command: string, options?: Command) {
+	create(command: string, options?: Command): Command {
 		this.commands[command] = Object.assign({}, this._configs, options);
 		return this.commands[command];
 	}
 
-	on(command: string, handler: CommandHandler) {
+	on(command: string, handler: CommandHandler): Command {
 		return this.create(command, { handler });
+	}
+
+	get configs(): CommandConfigs {
+		return this._configs;
+	}
+
+	set configs(v: CommandConfigs) {
+		this._configs = Object.assign({}, DEFAULTS, v);
+	}
+
+	private getMessageSubType(message: IncomingMessage) {
+		return supportedUpdateSubTypes.find(v => message && v in message);
+	}
+
+	private getMessageText(message: IncomingMessage) {
+		const subType = this.getMessageSubType(message);
+		const isText = subType == "text";
+		return {
+			text: message[isText ? "text" : "caption"],
+			entities: message[isText ? "entities" : "caption_entities"],
+		};
 	}
 }
 

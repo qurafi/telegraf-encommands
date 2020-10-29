@@ -6,16 +6,16 @@ export interface parserOptions {
 
 	// used to pre-filter the raw query
 	// should return string
-	preParse?: Function;
+	preParse?: (v: string) => string;
 
 	// used to filter the parsed arguments list
 	// should return array
-	postParse?: Function;
+	postParse?: (v: string) => string[];
 }
 
-export function parseArgs(query: string, options: parserOptions = {}) {
+export function parseArgs(query: string, options: parserOptions = {}): string[] {
 	if (options.preParse) {
-		let returned = options.preParse(query);
+		const returned = options.preParse(query);
 		if (typeof returned == "string") {
 			query = returned;
 		}
@@ -24,7 +24,7 @@ export function parseArgs(query: string, options: parserOptions = {}) {
 	let queries = query.trim().split(" ", options.maxargs);
 
 	if (options.postParse) {
-		let returned = options.postParse(query);
+		const returned = options.postParse(query);
 		if (Array.isArray(returned)) {
 			queries = returned;
 		}

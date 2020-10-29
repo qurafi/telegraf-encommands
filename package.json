@@ -18,7 +18,8 @@
 		"prepublishOnly": "tsc"
 	},
 	"files": [
-		"lib/*",
+		"lib/*.js",
+		"lib/*.d.ts",
 		"LICENSE",
 		"README.md"
 	],
@@ -29,7 +30,13 @@
 	"devDependencies": {
 		"@types/debug": "^4.1.5",
 		"@types/jest": "^26.0.14",
+		"@typescript-eslint/eslint-plugin": "^4.6.0",
+		"@typescript-eslint/parser": "^4.6.0",
+		"aws-sdk": "^2.781.0",
+		"debug": "^4.2.0",
 		"dotenv": "^8.2.0",
+		"dynamo-kvstore": "^1.0.0",
+		"eslint": "^7.12.1",
 		"jest": "^26.4.2",
 		"telegraf": "^3.38.0",
 		"telegram-typings": "^4.0.0-beta",
