@@ -183,7 +183,7 @@ export default class CommandManager {
 				args = cmd.parser(query, cmd.parserOptions);
 			}
 
-			const replyKey = `query-${args ? args.join() : query}`;
+			const replyKey = `query-${command}-${args ? args.join() : query}`;
 			const mid = await botReplies.get(replyKey);
 
 			let botReply;
@@ -238,8 +238,7 @@ export default class CommandManager {
 				const min = cmd.minResponseSize || 200;
 				const text = botReply.text;
 				if (cmd.largeResponseCache && text && text.length >= min) {
-					const query_id = args ? args.join() : query;
-					await botReplies.set(`query-${query_id}`, mid);
+					await botReplies.set(replyKey, mid);
 				}
 			}
 
