@@ -107,6 +107,7 @@ export default class CommandManager {
 		return Telegraf.mount(["edited_message", "message"], async (ctx, next) => {
 			const message = ctx.editedMessage ?? ctx.message;
 			if (!message) return next();
+			if (!ctx.chat) return next();
 
 			//	ctx.updateSubTypes is broken on edited messages
 			const subType = this.getMessageSubType(message);
@@ -183,7 +184,7 @@ export default class CommandManager {
 				args = cmd.parser(query, cmd.parserOptions);
 			}
 
-			const replyKey = `query-${command}-${args ? args.join() : query}`;
+			const replyKey = `query-${ctx.chat.id}-${command}-${args ? args.join() : query}`;
 			const mid = await botReplies.get(replyKey);
 
 			let botReply;
