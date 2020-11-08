@@ -10,7 +10,7 @@ export interface parserOptions {
 
 	// used to filter the parsed arguments list
 	// should return array
-	postParse?: (v: string) => string[];
+	postParse?: (v: string[]) => string[];
 }
 
 export function parseArgs(query: string, options: parserOptions = {}): string[] {
@@ -24,7 +24,7 @@ export function parseArgs(query: string, options: parserOptions = {}): string[] 
 	let queries = query.trim().split(" ", options.maxargs);
 
 	if (options.postParse) {
-		const returned = options.postParse(query);
+		const returned = options.postParse(queries);
 		if (Array.isArray(returned)) {
 			queries = returned;
 		}

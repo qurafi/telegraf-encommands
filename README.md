@@ -121,11 +121,11 @@ commands.configs = {
     helpMessage: "*set your help message here*",
 
     // set your custom parser function
-    // this is called with (query, parserArgOptions)
+    // this is called with (query, parserOptions)
     parser: (query, options) => query.split(" ")
 
     // pass your options to the arg parser
-    parserArgOptions: {}
+    parserOptions: {}
 
     // more options are available in index.ts file
 }
