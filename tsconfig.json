@@ -1,16 +1,17 @@
 {
 	"compilerOptions": {
 		"target": "es2017",
-		"module": "commonjs",
+        "module": "commonjs",
 		"esModuleInterop": true,
-		"allowSyntheticDefaultImports": true,
 		"declaration": true,
-		"outDir": "lib/",
+		"outDir": "lib",
 		"sourceMap": true,
 		"strict": true,
 		"suppressImplicitAnyIndexErrors": true,
+        "skipLibCheck": true,
 		"removeComments": true,
+        "rootDir": "src/"
 	},
 	"include": ["src/"],
-	"exclude": ["node_modules/", "tests"]
+	"exclude": ["node_modules/", "tests/"]
 }

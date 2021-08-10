@@ -13,6 +13,7 @@
 	"main": "lib/index.js",
 	"types": "lib/index.d.ts",
 	"scripts": {
+		"qtest": "jest",
 		"test": "jest --coverage",
 		"dev": "tsc -w",
 		"prepublishOnly": "tsc"
@@ -28,20 +29,20 @@
 	},
 	"dependencies": {},
 	"devDependencies": {
-		"@types/debug": "^4.1.5",
-		"@types/jest": "^26.0.14",
-		"@typescript-eslint/eslint-plugin": "^4.6.0",
-		"@typescript-eslint/parser": "^4.6.0",
-		"aws-sdk": "^2.781.0",
-		"debug": "^4.2.0",
-		"dotenv": "^8.2.0",
+		"@types/debug": "^4.1.7",
+		"@types/jest": "^26.0.24",
+		"@typescript-eslint/eslint-plugin": "^4.29.0",
+		"@typescript-eslint/parser": "^4.29.0",
+		"aws-sdk": "^2.960.0",
+		"debug": "^4.3.2",
+		"dotenv": "^10.0.0",
 		"dynamo-kvstore": "^1.0.1",
-		"eslint": "^7.12.1",
-		"jest": "^26.4.2",
-		"telegraf": "^3.38.0",
-		"telegram-typings": "^4.0.0-beta",
-		"tsc-watch": "^4.2.9",
-		"typescript": "^4.0.3"
+		"eslint": "^7.32.0",
+		"jest": "^27.0.6",
+		"telegraf": "^4.3.0",
+		"telegram-typings": "^5.0.0",
+		"tsc-watch": "^4.4.0",
+		"typescript": "^4.3.5"
 	},
 	"homepage": "https://github.com/mhmd-22/telegraf-encommands#readme",
 	"bugs": {
