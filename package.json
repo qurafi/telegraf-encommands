@@ -27,10 +27,9 @@
 	"engines": {
 		"node": ">=12"
 	},
-	"dependencies": {
-		"jest-jasmine2": "^27.4.6"
-	},
+	"dependencies": {},
 	"devDependencies": {
+		"jest-jasmine2": "^27.4.6",
 		"@types/debug": "^4.1.7",
 		"@types/jest": "^27.4.0",
 		"@typescript-eslint/eslint-plugin": "^5.9.0",
