@@ -1,128 +1,23 @@
 const { Context } = require("telegraf");
 const { setupBot, setupTest, ignoreBotToken, sendCommand } = require("./helper");
-
+const { test_messages } = require("./samples");
 require("dotenv").config();
 
-const supportedUpdateSubTypes = ["audio", "voice", "video", "photo", "document", "sticker"];
+const supported_subtypes = ["audio", "voice", "video", "photo", "document", "sticker"];
 
-const tests = [
-	{
-		name: "callback should be called if query is specified",
-	},
-	{
-		name: "callback should not be called if query is empty",
-		shouldRun: false,
-		query: "",
-
-		options: {
-			required: true,
-			helpMessage: false,
-		},
-	},
-	{
-		name: "callback should be called only on private chat",
-		shouldRun: false,
-		target: "group",
-	},
-	{
-		name: "callback should be called only on group chat",
-		shouldRun: false,
-		target: "private",
-		options: {
-			mode: "group",
-		},
-	},
-	{
-		name: "callback should be called on both chat modes",
-		target: "group",
-		options: {
-			mode: "both",
-		},
-	},
-	{
-		name: "callback should be called only on allowed users",
-		shouldRun: false,
-		options: {
-			allowedUsers: ["telegraf2"],
-		},
-	},
-
-	{
-		name: "callback should not be called only on targeted sub-types",
-		shouldRun: false,
-		message: { subType: "photo" },
-		options: {
-			subTypes: ["video"],
-		},
-	},
-
-	{
-		name: "should use replied_to_message as query when userReply = true",
-		query: "",
-		message: {
-			reply_to_message: {
-				text: "hello world",
-				entities: [],
-			},
-		},
-
-		options: {
-			required: true,
-			useReply: true,
-		},
-
-		test: params => {
-			expect(params.query).toEqual("hello world");
-		},
-	},
-	{
-		name: "callback should be called on replied messages",
-		query: "",
-		message: {
-			reply_to_message: {
-				text: "hello test",
-				entities: [],
-			},
-		},
-
-		options: {
-			required: false,
-		},
-	},
-
-	{
-		name: "callback should be called on edited messages when allowEdited = true",
-		isEdited: true,
-
-		options: {
-			allowEdited: true,
-		},
-	},
-
-	{
-		name: "callback should be called on edited messages when allowEdited = false",
-		query: "edited",
-		shouldRun: false,
-		isEdited: true,
-
-		options: {
-			allowEdited: false,
-		},
-	},
-];
-
-for (const subType of supportedUpdateSubTypes.slice(0, 1)) {
-	tests.push({
-		name: `callback should be called on the supported sub-type: "${subType}"`,
-		message: { subType },
+for (const subtype of supported_subtypes) {
+	test_messages.push({
+		name: `callback should be called on the supported sub-type: "${subtype}"`,
+		message: { subType: subtype },
 	});
 }
 
-for (const test of tests) {
+for (const test of test_messages) {
 	setupTest(test);
 }
 
-it("verify callback paramters", done => {
+
+it("verify callback parameters", done => {
 	const { bot, commands, sendCommand } = setupBot(done);
 	commands.on("test", params => {
 		expect(params.ctx).toBeInstanceOf(Context);
@@ -144,3 +39,54 @@ it("verify callback paramters", done => {
 
 	sendCommand("test", "arg1 arg2 arg3");
 });
+
+it("should not call handler when not sending command", done => {
+    const { bot, commands, sendMessage } = setupBot(done);
+	commands.on("test", params => {
+		throw Error("should not call command handler");
+	});
+
+	ignoreBotToken(bot, done);
+
+	bot.on("message", () => {
+		done()
+	});
+
+	sendMessage("test arg1 arg2 arg3");
+})
+
+
+it("should not be called when providing empty message object", done => {
+    const { bot, commands, sendMessage } = setupBot(done);
+
+	bot.on("message", () => {
+		done();
+	});
+
+    bot.handleUpdate({
+        message: {
+        }
+    })
+})
+
+
+it("should return help message", done => {
+    const { bot, commands, sendCommand } = setupBot(done, {
+        required: true,
+        helpMessage: "help",
+    });
+
+	ignoreBotToken(bot, done);
+
+
+	commands.on("test", params => {
+        throw Error("should not call command handler");
+	});
+
+	bot.on("message", (ctx) => {
+        expect(ctx.message.text).toEqual("help")
+		done()
+	});
+
+	sendCommand("test", "");
+})

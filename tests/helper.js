@@ -9,8 +9,8 @@ const defaultConfigs = {
 };
 
 // copied from: https://github.com/telegraf/telegraf/blob/develop/test/composer.js
-const baseMessage = { chat: { id: 1 }, from: { id: 42, username: "telegraf" } };
-const baseGroupMessage = {
+const base_message = { chat: { id: 1 }, from: { id: 42, username: "telegraf" } };
+const base_group_message = {
 	chat: { id: -1, type: "group" },
 	from: { id: 42, username: "telegraf" },
 };
@@ -32,12 +32,15 @@ function setupBot(done, configs = defaultConfigs) {
 
 	bot.use(commands.middleware);
 
-	return { bot, commands, sendCommand: sendCommand.bind(bot) };
+	return { bot, commands, sendCommand: sendCommand.bind(null, bot), sendMessage: sendMessage.bind(null, bot)};
 }
 
 function setupTest({
 	name = "",
 	shouldRun = true,
+    shouldRunNext = false,
+    shouldInvalid = false,
+    InvalidReason,
 	query = "query string",
 	target = "private",
 	message = {},
@@ -45,52 +48,76 @@ function setupTest({
 	isEdited,
 	test: testfn,
 }) {
-	it(name, done => {
+	it(name, async done => {
+        const onInvalidMock = jest.fn(((reason) => {
+            if (shouldInvalid) {
+                done();
+            } else {
+                throw Error("invalid shouldn't run")
+            }
+        }))
+
 		const { bot, commands, sendCommand } = setupBot(done, {
 			...defaultConfigs,
 			...options,
+            oninvalid: onInvalidMock,
 		});
 
 		ignoreBotToken(bot, done);
 
-		commands.on("test", params => {
+        const commandMock = jest.fn(async params => {
 			if (!shouldRun) {
 				throw Error("command expected to not run");
 			}
 
-			if (testfn) testfn(params);
+
+			if (testfn) {
+                await testfn(params);
+            }
 
 			done();
-		});
+		})
 
-		bot.on(isEdited ? "edited_message" : "message", () => {
+        const nextMock = jest.fn(() => {
 			if (shouldRun) {
 				throw Error("next() should not be called");
 			} else {
 				done();
 			}
-		});
+		})
+        
+		commands.on("test", commandMock);
 
-		sendCommand("test", query, target == "group", message, isEdited);
+		bot.on(isEdited ? "edited_message" : "message", nextMock);
+
+        sendCommand("test", query, target == "group", message, isEdited);
 	});
 }
 
-function sendCommand(command, query = "", target, other_options = {}, isEdited) {
-	let subType = other_options.subType;
-	if (subType) {
-		other_options[subType] = {};
+function sendMessage(bot, content, target, other_options = {}, isEdited) {
+	let sub_type = other_options.subType;
+	if (sub_type) {
+		other_options[sub_type] = {};
 	}
 
-	let text = subType ? "caption" : "text";
-	let entities = subType ? "caption_entities" : "entities";
+	let text = sub_type ? "caption" : "text";
 	let message = {
-		[text]: `/${command} ${query}`,
-		[entities]: [{ type: "bot_command", offset: 0, length: command.length + 1 }],
-		...(target ? baseGroupMessage : baseMessage),
+		[text]: content,
+		...(target ? base_group_message : base_message),
 		...other_options,
 	};
 
-	return this.handleUpdate({ [isEdited ? "edited_message" : "message"]: message });
+	return bot.handleUpdate({ [isEdited ? "edited_message" : "message"]: message });
+}
+
+function sendCommand(bot, command, query = "", target, other_options = {}, isEdited) {
+	let sub_type = other_options.subType;
+    let entities = sub_type ? "caption_entities" : "entities";
+    other_options = {
+        [entities]: [{ type: "bot_command", offset: 0, length: command.length + 1 }],
+        ...other_options,
+    }
+    return sendMessage(bot, `/${command} ${query}`, target, other_options, isEdited)
 }
 
 module.exports = {
