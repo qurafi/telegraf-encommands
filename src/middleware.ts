@@ -5,46 +5,61 @@ import {
 	Commands,
 	constructorConfigs,
 	Store,
-	supportedUpdateSubTypes,
+	SUPPORTED_SUBTYPES,
 } from "./types";
 import * as TT from "telegram-typings";
 import d from "debug";
+import { getMessageSubType, getUpdateData, getMessageText, parseCommand } from "./utils";
 
 const debug = d("telegraf:encommands");
+
+export enum InvalidCommand {
+    INVALID_CHAT_TYPE,
+    INVALID_MESSAGE_TYPE,
+    USER_NOT_ALLOWED,
+    REQUIRED,
+}
 
 export function createMiddleware(configs: constructorConfigs, commands: Commands) {
 	return Composer.on(["edited_message", "message"], async (ctx, next) => {
 		const message = ctx.editedMessage ?? ctx.message;
 		if (!message || !ctx.chat) return next();
 
-		//	ctx.updateSubTypes is broken on edited messags
-		const subType = getMessageSubType(message);
-		if (!subType) return next();
+		//	ctx.updateSubTypes is broken on edited messages
+		const sub_type = getMessageSubType(message);
+		if (!sub_type) return next();
 
 		// @ts-ignore
 		const reply: TT.Message | undefined = message.reply_to_message;
-		const isEdited = !!ctx.editedMessage;
+		const is_edited = !!ctx.editedMessage;
 
-		const updateData = getUpdateData(message);
-		if (!updateData) return next();
+		const update_data = getUpdateData(message);
+		if (!update_data) {
+            return next();
+        }
 
 		const { text, entities } = getMessageText(message);
-		if (!text || !entities) return next();
+		if (!text || !entities) {
+            return next();
+        }
 
-		const parsedCommand = parseCommand(message);
-		const cmd = parsedCommand && commands.get(parsedCommand.command);
-		if (!parsedCommand || !cmd || (isEdited && !cmd.allowEdited)) return next();
+		const parsed_command = parseCommand(message);
+		const cmd = parsed_command && commands.get(parsed_command.command);
+		if (!parsed_command || !cmd || (is_edited && !cmd.allowEdited)) {
+            return next();
+        }
 
-		if (!validateCommand(cmd, message, subType, message.from)) {
-			return next();
+        const {valid, reason} = validateCommand(cmd, message, sub_type, message.from)
+		if (!valid) {
+			return cmd.oninvalid?.(reason, ctx, next);
 		}
 
-		if (cmd.deleteOldReplies && isEdited) {
+		if (cmd.allowEdited && is_edited) {
 			debug("user edited their message, deleting old reply...");
 			await findAndDeleteOldBotReply(message.message_id, configs.cacheStore, ctx);
 		}
 
-		let { query } = parsedCommand;
+		let { query } = parsed_command;
 
 		if (query.trim() == "" && cmd.useRepliedTo && reply) {
 			const { text } = getMessageText(reply);
@@ -58,7 +73,8 @@ export function createMiddleware(configs: constructorConfigs, commands: Commands
 				return ctx.replyWithMarkdown(cmd.helpMessage);
 			}
 
-			return next();
+            cmd.oninvalid?.(InvalidCommand.REQUIRED, ctx, next)
+			return;
 		}
 
 		let args: string[] | undefined;
@@ -66,160 +82,111 @@ export function createMiddleware(configs: constructorConfigs, commands: Commands
 			args = cmd.parser(query, cmd.parserOptions);
 		}
 
-		const replyKey = [
+		const reply_key = [
 			"query",
 			message.chat.id,
-			parsedCommand.command,
+			parsed_command.command,
 			args ? args.join() : query,
 		].join("-");
 
-		const replyFromCache =
+		const reply_from_cache =
 			cmd.largeResponseCache &&
 			(await replyToMessageIfNotOutdated(
 				ctx,
-				replyKey,
+				reply_key,
 				configs.cacheStore,
 				configs.replyCacheAge
 			));
 
-		if (replyFromCache) {
+		if (reply_from_cache) {
 			debug("message retrieved from cache");
 			return;
 		}
 
 		const params: CommandParams = {
 			ctx,
-			command: parsedCommand.command,
+			command: parsed_command.command,
 			query,
 			args,
 			message,
 			reply_to: reply,
-			isReply: !!reply,
-			isEdited,
+			isEdited: is_edited,
 
-			type: subType,
-			data: updateData,
+			type: sub_type,
+			data: update_data,
+
+			next,
 		};
 
-		const botReply = await cmd.handler(params);
+		const bot_reply = await cmd.handler(params);
 
-		if (botReply) {
-			if (cmd.deleteOldReplies) {
-				// store bot reply so when user edit their message the old bot reply will be deleted
-				await configs.cacheStore.set(`id-${message.message_id}`, botReply.message_id);
-			}
+		if (!bot_reply) return;
 
-			const text = botReply.text;
-			if (
-				cmd.largeResponseCache &&
-				text &&
-				cmd.minResponseSize &&
-				text.length >= cmd.minResponseSize &&
-				query.trim() !== ""
-			) {
-				debug("message stored in cache");
-				await configs.cacheStore.set(replyKey, botReply.message_id);
-			}
+		if (cmd.allowEdited) {
+			// store bot reply so when user edit their message the old bot reply will be deleted
+			await configs.cacheStore.set(`id-${message.message_id}`, bot_reply.message_id);
 		}
 
-		if (botReply === false) {
-			return next();
+		const reply_text = bot_reply.text;
+		if (!reply_text) return;
+
+		const is_in_minimum_size = cmd.minResponseSize && reply_text.length >= cmd.minResponseSize;
+		if (cmd.largeResponseCache && reply_text && is_in_minimum_size && query.trim() !== "") {
+			debug("message stored in cache");
+			await configs.cacheStore.set(reply_key, bot_reply.message_id);
 		}
 	});
 }
 
-function getMessageSubType(message: TT.Message) {
-	return supportedUpdateSubTypes.find(v => message && v in message);
-}
-
-function getMessageText(message: TT.Message) {
-	const subType = getMessageSubType(message);
-	if (!subType) return {};
-
-	const isText = subType == "text";
-	return {
-		text: message[isText ? "text" : "caption"],
-		entities: message[isText ? "entities" : "caption_entities"],
-	};
-}
-
-function getUpdateData(message: TT.Message) {
-	const { text, entities } = getMessageText(message);
-	const subType = getMessageSubType(message);
-	const updateData = { text, entities };
-
-	if (!text || !entities) {
-		return;
-	}
-
-	if (subType && subType !== "text") {
-		const info = message[subType];
-		return { ...updateData, ...info };
-	}
-
-	return updateData;
-}
-
-function parseCommand(message: TT.Message) {
-	const { text, entities } = getMessageText(message);
-	if (!text || !entities) return;
-
-	const entity = entities && entities[0];
-	const isCommand = entity && entity.type == "bot_command" && entity.offset === 0;
-	if (isCommand) {
-		const command = text.slice(1, entity.length);
-		const query = text.slice(entity.length + 1);
-		return { command, query };
-	}
-}
-
 async function findAndDeleteOldBotReply(message_id: number, store: Store, ctx: Context) {
 	const key = `id-${message_id}`;
-	const botReplyMID = await store.get(key);
+	const bot_reply_mid = await store.get(key);
 
-	if (botReplyMID) {
-		await ctx.deleteMessage(botReplyMID);
+	if (bot_reply_mid) {
+		await ctx.deleteMessage(bot_reply_mid);
 		await store.delete(key);
 	}
 }
 
-function validateCommand(cmd: Command, message: TT.Message, subType: string, user: TT.User) {
-	const validSubType = !cmd.subTypes || cmd.subTypes.some(v => v == subType);
+function validateCommand(cmd: Command, message: TT.Message, sub_type: string, user: TT.User) {
+	const valid_sub_type = !cmd.subTypes || cmd.subTypes.some(v => v == sub_type);
 
-	const chatType = message.chat.id > 0 ? "private" : "group";
+	const chat_type = message.chat.id > 0 ? "private" : "group";
 
-	const validChatType = cmd.mode === "both" || cmd.mode == chatType;
+	const valid_chat_type = cmd.mode === "both" || cmd.mode == chat_type;
 
-	const allowedUsers = cmd.allowedUsers;
-	const isUserAllowed =
-		!allowedUsers || allowedUsers.some(username => username === user.username);
+	const allowed_users = cmd.allowedUsers;
+	const is_user_allowed =
+		!allowed_users || allowed_users.some(username => username === user.username);
 
-	return validChatType && validSubType && isUserAllowed;
+    const invalid_index = [valid_chat_type, valid_sub_type, is_user_allowed].indexOf(false);
+	return {valid: invalid_index < 0, reason: invalid_index};
 }
 
 async function replyToMessageIfNotOutdated(
 	ctx: Context,
-	replyKey: string,
+	reply_key: string,
 	cache: Store,
 	age: number
 ) {
-	const cachedMessageId = await cache.get(replyKey);
-	if (!cachedMessageId) return;
+	const cached_message_id = await cache.get(reply_key);
+	if (!cached_message_id) return;
 	try {
-		const botReply = await ctx.replyWithMarkdown("`  👆`", {
-			reply_to_message_id: cachedMessageId,
+		const bot_reply = await ctx.replyWithMarkdown("`  👆`", {
+			reply_to_message_id: cached_message_id,
 		});
 
-		const dmsg = botReply.reply_to_message?.date;
+		const message_date = bot_reply.reply_to_message?.date;
 
-		if (dmsg && Date.now() / 1000 - dmsg > age) {
-			await cache.delete(replyKey);
-			ctx.deleteMessage(botReply.message_id);
+		if (message_date && (Date.now() / 1000) - message_date > age) {
+			await cache.delete(reply_key);
+			ctx.deleteMessage(bot_reply.message_id);
 			return;
 		}
 
-		return botReply;
+		return bot_reply;
 	} catch (e) {
+		// ignore any error when replying to cached message
 		return;
 	}
 }
