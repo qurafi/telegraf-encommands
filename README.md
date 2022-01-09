@@ -1,16 +1,18 @@
 # Telegraf-encommands
-![npm](https://img.shields.io/npm/v/telegraf-encommands) ![npm bundle size](https://img.shields.io/bundlephobia/min/telegraf-encommands) ![NPM](https://img.shields.io/npm/l/telegraf-encommands)
+![npm](https://img.shields.io/npm/v/telegraf-encommands)  ![NPM](https://img.shields.io/npm/l/telegraf-encommands)
 
 ###### Enhanced command manager for Telegraf.js
 
 ## Features
-
+- Compatible with the latest Telegraf.js 4.x version
+- Typescript support
 - Support edited messages and replies.
-- Delete old bot replied using in-memory caching or you can set your own custom store.
+- Delete old bot replied using in-memory caching or you can set your own custom cache store.
 - Set which users are allowed to run a specific command.
 - Set command to run on a specific chat type(e.g. private only) or update-type(e.g. photos only).
 - Customizable argument parser.
 - Reply to the last cached bot reply if user send the same command (useful for less database queries and less chat distracting for large bot messages)
+- ...and more
 
 ## Installation
 
@@ -21,13 +23,15 @@
 ##### Basic command
 
 ```javascript
+import {TelegrafEncommands} from "telegraf-encommands";
+
 const bot = new Telegraf(process.env.BOT_TOKEN);
-const commands = new CommandManager();
+const commands = TelegrafEncommands(options);
 
 bot.use(commands.middleware);
 
+// using default configurations
 commands.on("test", ({ ctx, args }) => {
-    console.log(args);
     return ctx.reply("hello from command test");
 });
 ```
@@ -39,8 +43,26 @@ commands.on("test", ({ ctx, args }) => {
 commands.create("photo", {
     subTypes: ["photo"],
     required: false,
-    handler: ({ ctx, updateData }) => {
-        return ctx.reply(`${updateData[0].width}x${updateData[0].height}`);
+    handler: ({ ctx, data }) => {
+        return ctx.reply(`${data[0].width}x${data[0].height}`);
+    },
+});
+
+// all files
+commands.create("file", {
+    subTypes: ["photo", "sticker", "video", "voice", "audio", "document"],
+    required: false,
+    handler: ({ ctx, data, type }) => {
+        const info = JSON.stringify(data, null, 2);
+        return ctx.replyWithMarkdownV2(`${type}: \`${info}\``);
+    },
+        
+    oninvalid(reason, ctx, next) {
+        console.log(reason);
+        if (reason == InvalidCommand.INVALID_MESSAGE_TYPE) {
+            return ctx.reply("File is required")
+        }
+        return next()
     },
 });
 ```
@@ -60,36 +82,79 @@ commands.create("secret", {
 ##### Use replied_to_message as command query
 
 ```javascript
-
 commands.create("echo", {
     required: false,
-    useReply: true,
-    handler: ({ ctx, isReply, query }) => {
-        if (isReply) {
-            return ctx.reply(`${query}`);
+    useRepliedTo: true,
+    handler: ({ ctx, reply_to, query }) => {
+        if (reply_to) {
+            return ctx.reply(`reply: ${query}`);
         }
     },
 });
 ```
 
+refer to [./example.js](./example.js)
+
 ## Usage
 ```javascript
-// set up new instnace
-let commands = new CommandManager();
+const commands = new TelegrafEncommand({
+    // where to store cached message, should have set, get, and delete.
+    // default is Map(in memory)
+    cacheStore: Store,
+
+    // specify time of caching in second
+    replyCacheAge: number,
+
+    // default command options
+    defaults: {
+        // require arguments to run this command
+        required: boolean,
+
+        // define help message when required=true and the arguments is empty, next() will be called when undefined
+        helpMessage: string,
+
+        // a function called to parse raw query called with (query, options)
+        parser: parseArgs,
+        parserOptions, // parser options passed to the above function
+
+        // list of user allowed to run commands. passing undefined will allow all users
+        allowedUsers: string[],
+
+        // where to allow commands to run
+        mode: "both" | "private" | "group",
+        
+        // re-run command when user edit their message
+        allowEdited: true,
+
+        // allow using replied_to_message as query when reply with a command. this only works when command invoked with no arguments
+        useRepliedTo: true,
+
+        // store bot replies and delete them when reply to edited message
+        deleteOldReplies: true,
+
+        // cache messages with size specified below
+        largeResponseCache: true,
+        minResponseSize: 10,
+
+
+        // runs when trying to run this command with invalid input (empty arguemnts, invalid chat type or message type, user not allowed)
+        oninvalid(reason, ctx, next)
+    },
+});
 
 // register the middleware
 bot.use(commands.middleware);
 
 
 // create command with default configs
-bot.on("test", onCommandTest)
+commands.on("test", onCommandTest)
 
 // create command with custom options
-bot.create("test", {
-    required: false, // can run without specific args
+commands.create("test", {
+    required: true,
     helpMessage: "this is a help message",
     handler: onCommandTest,
-    // more options in index.ts
+    // more options in src/types.ts
 })
 
 // handler for the command
@@ -100,12 +165,11 @@ function onCommandTest(params) {
     //  query: raw query
     //  args: parsed arguments if exists
     //  message: message object from context object
-    //  reply: message object of reply
-    //  replySubType: type of reply message
-    //  updateType: type of message
-    //  updateData: data related to the type of message
-    //  isReply
+    //  type: message type
+    //  data: data related to the type of message
+    //  reply_to: replied to message same as message.reply_to_message
     //  isEdited
+    //  next, telegraf next function
 
     const {command, query, args} = params
     console.log(args)
@@ -113,20 +177,5 @@ function onCommandTest(params) {
     // bot reply should be returned in order for deleteOldReplies to work
     // if the returned value is false. it will pass next()
     return ctx.reply("command executed")
-}
-
-// set default configs for commands instance
-commands.configs = {
-    // NOTE: help messages are formatted with markdown
-    helpMessage: "*set your help message here*",
-
-    // set your custom parser function
-    // this is called with (query, parserOptions)
-    parser: (query, options) => query.split(" ")
-
-    // pass your options to the arg parser
-    parserOptions: {}
-
-    // more options are available in index.ts file
 }
 ```
